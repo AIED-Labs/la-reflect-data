@@ -1,0 +1,1780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LA Reflect Data Exporter</title>
+
+<style>
+    * { box-sizing: border-box; }
+
+    body {
+        margin: 0;
+        font-family: Inter, system-ui, -apple-system, sans-serif;
+        background: #f5f6f8;
+        color: #172033;
+    }
+
+    .container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 50px 24px;
+    }
+
+    h1 {
+        margin: 0 0 8px;
+        font-size: 36px;
+        letter-spacing: -1px;
+    }
+
+    .subtitle {
+        color: #667085;
+        margin-bottom: 40px;
+    }
+
+    .card {
+        background: white;
+        border: 1px solid #e4e7ec;
+        border-radius: 14px;
+        padding: 28px;
+        margin-bottom: 20px;
+    }
+
+    .step {
+        font-size: 12px;
+        font-weight: 700;
+        color: #315efb;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        margin-bottom: 8px;
+    }
+
+    h2 {
+        margin: 0 0 20px;
+        font-size: 21px;
+    }
+
+    label {
+        display: block;
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 7px;
+    }
+
+    input, select {
+        width: 100%;
+        padding: 12px 13px;
+        border: 1px solid #d0d5dd;
+        border-radius: 8px;
+        font-size: 14px;
+        background: white;
+        margin-bottom: 16px;
+    }
+
+    button {
+        border: 0;
+        border-radius: 8px;
+        padding: 12px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .primary {
+        background: #315efb;
+        color: white;
+    }
+
+    .primary:hover {
+        background: #2448c8;
+    }
+
+    .secondary {
+        background: #eef2f6;
+        color: #172033;
+    }
+
+    button:disabled {
+        opacity: .5;
+        cursor: not-allowed;
+    }
+
+    .hidden {
+        display: none;
+    }
+
+    .status {
+        margin-top: 16px;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        background: #f2f4f7;
+    }
+
+    .success {
+        background: #ecfdf3;
+        color: #027a48;
+    }
+
+    .error {
+        background: #fef3f2;
+        color: #b42318;
+    }
+
+    .progress {
+        margin-top: 20px;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 8px;
+        background: #eaecf0;
+        border-radius: 99px;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        width: 0%;
+        background: #315efb;
+        transition: width .2s;
+    }
+
+    .options {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+    }
+
+    .option {
+        border: 1px solid #d0d5dd;
+        border-radius: 8px;
+        padding: 11px 16px;
+        cursor: pointer;
+        background: white;
+        font-size: 14px;
+    }
+
+    .option.selected {
+        border-color: #315efb;
+        background: #eef3ff;
+        color: #315efb;
+        font-weight: 600;
+    }
+
+    .note {
+        color: #667085;
+        font-size: 12px;
+        margin-top: 10px;
+    }
+
+    .download-result {
+        margin-top: 20px;
+        padding: 16px;
+        border-radius: 8px;
+        background: #ecfdf3;
+        color: #027a48;
+        display: none;
+    }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>LA Reflect Data Exporter</h1>
+
+    <div class="subtitle">
+        Select the research data you need and download it for analysis.
+    </div>
+
+
+    <!-- AUTHENTICATION -->
+
+    <div class="card">
+
+        <div class="step">Step 1</div>
+        <h2>Connect to LA Reflect</h2>
+
+        <label for="clientId">Client ID</label>
+        <input
+            id="clientId"
+            type="text"
+            placeholder="Enter client ID"
+            autocomplete="off"
+        >
+
+        <label for="clientSecret">Client Secret</label>
+        <input
+            id="clientSecret"
+            type="password"
+            placeholder="Enter client secret"
+            autocomplete="off"
+        >
+
+        <button
+            id="connectBtn"
+            class="primary"
+            onclick="connect()"
+        >
+            Connect
+        </button>
+
+        <div id="authStatus" class="status hidden"></div>
+
+    </div>
+
+
+    <!-- DATA SELECTION -->
+
+    <div id="selectionCard" class="card hidden">
+
+        <div class="step">Step 2</div>
+        <h2>Select data</h2>
+
+        <label for="activitySelect">Activity</label>
+
+        <select id="activitySelect" onchange="loadTasks()">
+            <option value="">Select activity</option>
+        </select>
+
+        <label for="taskSelect">Task</label>
+
+        <select id="taskSelect" onchange="showExport()" disabled>
+            <option value="">Select task</option>
+        </select>
+
+        <label for="userId">User ID</label>
+
+        <input
+            id="userId"
+            type="text"
+            placeholder="Enter LA Reflect user ID"
+            autocomplete="off"
+        >
+
+        <div class="note">
+            Enter the LA Reflect user ID whose gaze data you want to download.
+            Includes gaze data, screen metadata, and automatically anonymized screen captures.
+        </div>
+
+        <div class="note">
+            Enter UserID given by instructor team. If you don't have it, please contact your instructor.
+        </div>
+
+    </div>
+
+
+    <!-- EXPORT -->
+
+    <div id="exportCard" class="card hidden">
+
+        <div class="step">Step 3</div>
+        <h2>Export</h2>
+
+        <label>Dataset</label>
+
+        <div class="options">
+
+            <div class="option selected">
+                Eye-tracking Dataset
+            </div>
+
+        </div>
+
+        <div class="note">
+            Includes gaze data, screen metadata, and automatically
+            cropped screen captures.
+        </div>
+
+        <br>
+
+        <label>Format</label>
+
+        <div class="options">
+
+            <div
+                class="option selected"
+                id="csvOption"
+                onclick="selectFormat('csv')"
+            >
+                CSV
+            </div>
+
+            <div
+                class="option"
+                id="jsonOption"
+                onclick="selectFormat('json')"
+            >
+                JSON
+            </div>
+
+            <div
+                class="option"
+                id="zipOption"
+                onclick="selectFormat('zip')"
+            >
+                ZIP
+            </div>
+
+        </div>
+
+        <div class="note">
+            ZIP includes the cropped screenshots with CSV + JSON. Individual JSON or CSV only contains the
+            combined gaze and screen data without image files.
+        </div>
+
+        <br>
+
+        <button
+            id="downloadBtn"
+            class="primary"
+            onclick="downloadData()"
+        >
+            Download Eye-tracking Dataset
+        </button>
+
+        <div id="progress" class="progress hidden">
+
+            <div id="progressText">
+                Preparing download...
+            </div>
+
+            <br>
+
+            <div class="progress-bar">
+                <div
+                    id="progressFill"
+                    class="progress-fill"
+                ></div>
+            </div>
+
+        </div>
+
+        <div
+            id="downloadResult"
+            class="download-result"
+        ></div>
+
+    </div>
+
+</div>
+
+
+<script>
+
+const API = "https://lareflectapi.edublab.net";
+
+let token = null;
+
+let selectedFormat = "csv";
+
+let activities = [];
+let tasks = [];
+let users = [];
+
+
+/* =========================================================
+   API
+   ========================================================= */
+
+async function apiRequest(endpoint, options = {}) {
+
+    if (!token) {
+        throw new Error("Authorization token required.");
+    }
+
+    const response = await fetch(
+        API + endpoint,
+        {
+            ...options,
+            headers: {
+                "accept": "application/json",
+                "Authorization": `Bearer ${token}`,
+                "x-system-authorization": `Bearer ${token}`,
+                "x-user-authorization": `Bearer ${token}`,
+                ...(options.headers || {})
+            }
+        }
+    );
+
+    if (!response.ok) {
+
+        let message = `HTTP ${response.status}`;
+
+        try {
+            const error = await response.json();
+            message = error.error || message;
+        } catch {}
+
+        throw new Error(message);
+    }
+
+    return response.json();
+}
+
+
+
+/* =========================================================
+   AUTHENTICATION
+   ========================================================= */
+
+async function connect() {
+
+    const clientId =
+        document.getElementById("clientId").value.trim();
+
+    const clientSecret =
+        document.getElementById("clientSecret").value.trim();
+
+    if (!clientId || !clientSecret) {
+        showAuthStatus(
+            "Please enter Client ID and Client Secret.",
+            true
+        );
+        return;
+    }
+
+    const button =
+        document.getElementById("connectBtn");
+
+    button.disabled = true;
+    button.textContent = "Connecting...";
+
+    try {
+
+        const response = await fetch(
+            `${API}/auth/system-token`,
+            {
+                method: "POST",
+
+                headers: {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify({
+                    clientId,
+                    clientSecret
+                })
+            }
+        );
+
+        if (!response.ok) {
+
+            let message = `HTTP ${response.status}`;
+
+            try {
+                const error = await response.json();
+                message = error.error || message;
+            } catch {}
+
+            throw new Error(message);
+        }
+
+        const data = await response.json();
+
+        /*
+         * Supports common token response names.
+         */
+
+        token =
+            data.token ||
+            data.accessToken ||
+            data.access_token ||
+            data.data?.token ||
+            data.data?.accessToken ||
+            data.data?.access_token;
+
+        console.log("Token received:", !!token);
+
+        if (!token) {
+            throw new Error(
+                "Authentication succeeded but no token was returned."
+            );
+        }
+
+        /*
+         * Remove credentials from the DOM after authentication.
+         */
+
+        document.getElementById("clientId").value = "";
+        document.getElementById("clientSecret").value = "";
+
+        showAuthStatus(
+            "Connected successfully.",
+            false
+        );
+
+        document
+            .getElementById("selectionCard")
+            .classList.remove("hidden");
+
+        await loadActivities();
+
+    } catch (error) {
+
+        token = null;
+
+        showAuthStatus(
+            error.message,
+            true
+        );
+
+    } finally {
+
+        button.disabled = false;
+        button.textContent = "Connect";
+    }
+}
+
+
+/* =========================================================
+   ACTIVITIES
+   ========================================================= */
+
+async function loadActivities() {
+
+    const select =
+        document.getElementById("activitySelect");
+
+    select.innerHTML =
+        `<option value="">Loading activities...</option>`;
+
+    try {
+
+        const response =
+            await apiRequest("/activities");
+
+        activities = extractArray(response);
+
+        select.innerHTML =
+            `<option value="">Select activity</option>`;
+
+        activities.forEach(activity => {
+
+            const id =
+                activity._id ||
+                activity.id;
+
+            const name =
+                activity.name ||
+                activity.title ||
+                activity.activityName ||
+                id;
+
+            const option =
+                document.createElement("option");
+
+            option.value = id;
+            option.textContent = name;
+
+            select.appendChild(option);
+        });
+
+    } catch (error) {
+
+        select.innerHTML =
+            `<option value="">Failed to load activities</option>`;
+
+        alert(error.message);
+    }
+}
+
+
+/* =========================================================
+   TASKS
+   ========================================================= */
+
+async function loadTasks() {
+
+    const activityId =
+        document.getElementById("activitySelect").value;
+
+    const taskSelect =
+        document.getElementById("taskSelect");
+
+    const exportCard =
+        document.getElementById("exportCard");
+
+    document
+        .getElementById("exportCard")
+        .classList.add("hidden");
+
+    if (!activityId) {
+
+        taskSelect.disabled = true;
+
+        taskSelect.innerHTML =
+            `<option value="">Select task</option>`;
+
+        return;
+    }
+
+    taskSelect.disabled = true;
+
+    taskSelect.innerHTML =
+        `<option value="">Loading tasks...</option>`;
+
+    try {
+
+        const response = await fetch(
+            `${API}/activities/${activityId}/tasks`,
+            {
+                method: "GET",
+
+                headers: {
+                    "accept": "application/json",
+                    "Authorization": `Bearer ${token}`,
+                    "x-system-authorization": `Bearer ${token}`
+                }
+            }
+        );
+
+        console.log(
+            "TASK STATUS:",
+            response.status
+        );
+
+        if (!response.ok) {
+
+            const text = await response.text();
+
+            console.log(
+                "TASK RESPONSE:",
+                text
+            );
+
+            throw new Error(
+                `Task API error ${response.status}: ${text}`
+            );
+        }
+
+        const data = await response.json();
+
+        console.log("TASK DATA:", data);
+
+        tasks = extractArray(data);
+
+        taskSelect.innerHTML =
+            `<option value="">Select task</option>`;
+
+        tasks.forEach(task => {
+
+            const id =
+                task._id ||
+                task.id;
+
+            const name =
+                task.name ||
+                task.title ||
+                task.taskName ||
+                id;
+
+            const option =
+                document.createElement("option");
+
+            option.value = id;
+            option.textContent = name;
+
+            taskSelect.appendChild(option);
+        });
+
+        taskSelect.disabled = false;
+
+    } catch (error) {
+
+        console.error(
+            "LOAD TASKS ERROR:",
+            error
+        );
+
+        taskSelect.innerHTML =
+            `<option value="">Failed to load tasks</option>`;
+
+        alert(error.message);
+    }
+}
+
+function showExport() {
+
+    const taskId =
+        document.getElementById("taskSelect").value;
+
+    const exportCard =
+        document.getElementById("exportCard");
+
+    if (taskId) {
+        exportCard.classList.remove("hidden");
+    } else {
+        exportCard.classList.add("hidden");
+    }
+}
+
+/* =========================================================
+   DOWNLOAD
+   ========================================================= */
+async function downloadData() {
+
+    const activityId =
+        document.getElementById("activitySelect").value;
+
+    const taskId =
+        document.getElementById("taskSelect").value;
+
+    const userId =
+        document.getElementById("userId").value.trim();
+
+    if (!userId) {
+        alert("Please enter a User ID.");
+        return;
+    }
+
+    if (!activityId || !taskId) {
+        alert("Please select an activity and task.");
+        return;
+    }
+
+    const button =
+        document.getElementById("downloadBtn");
+
+    button.disabled = true;
+
+    document
+        .getElementById("progress")
+        .classList.remove("hidden");
+
+    document
+        .getElementById("downloadResult")
+        .style.display = "none";
+
+    try {
+
+        updateProgress(
+            5,
+            "Fetching gaze data..."
+        );
+
+        const gazeRecords =
+            await fetchAllGaze(
+                activityId,
+                taskId,
+                userId
+            );
+
+        updateProgress(
+            30,
+            "Fetching screen data..."
+        );
+
+        const screens =
+            await fetchAllScreens(
+                activityId,
+                taskId,
+                userId
+            );
+
+        const dataset =
+            buildEyeTrackingDataset(
+                gazeRecords,
+                screens,
+                activityId,
+                taskId,
+                userId
+            );
+
+        if (selectedFormat === "json") {
+
+            const safeDataset =
+                structuredClone(dataset);
+
+            safeDataset.screens.forEach(screen => {
+                delete screen.imageUrl;
+            });
+
+            downloadJSON(
+                safeDataset,
+                "la-reflect-eye-tracking.json"
+            );
+
+            showDownloadResult(
+                "Eye-tracking dataset exported as JSON."
+            );
+
+            return;
+        }
+
+        if (selectedFormat === "csv") {
+
+            downloadEyeTrackingCSV(
+                dataset
+            );
+
+            showDownloadResult(
+                "Eye-tracking dataset exported as CSV."
+            );
+
+            return;
+        }
+
+        if (selectedFormat === "zip") {
+
+            await downloadEyeTrackingZip(
+                dataset
+            );
+
+            showDownloadResult(
+                "Eye-tracking dataset exported as ZIP."
+            );
+
+            return;
+        }
+
+        await downloadEyeTrackingZip(
+            dataset
+        );
+
+        showDownloadResult(
+            "Eye-tracking dataset exported as ZIP."
+        );
+
+    } catch (error) {
+
+        console.error(error);
+
+        alert(
+            `Download failed: ${error.message}`
+        );
+
+    } finally {
+
+        button.disabled = false;
+    }
+}
+
+
+/*----FETCH ALL GAZE AND SCREENS ----*/
+
+async function fetchAllGaze(
+    activityId,
+    taskId,
+    userId
+) {
+
+    const allRecords = [];
+
+    let page = 1;
+    const limit = 1000;
+
+    while (true) {
+
+        const url =
+            `${API}/eye-tracking/gaze/` +
+            `${activityId}/${taskId}` +
+            `?userId=${encodeURIComponent(userId)}` +
+            `&limit=${limit}` +
+            `&page=${page}`;
+
+        updateProgress(
+            10,
+            `Fetching page ${page}...`
+        );
+
+        const response = await fetch(
+            url,
+            {
+                headers: {
+                    "accept": "application/json",
+                    "Authorization": `Bearer ${token}`,
+                    "x-system-authorization": `Bearer ${token}`
+                }
+            }
+        );
+
+        if (!response.ok) {
+
+            const text =
+                await response.text();
+
+            throw new Error(
+                `Gaze API ${response.status}: ${text}`
+            );
+        }
+
+        const data =
+            await response.json();
+
+        const records =
+            data.data || [];
+
+        allRecords.push(...records);
+
+        console.log(
+            `Page ${page}: ${records.length} records`
+        );
+
+        if (
+            data.totalPages &&
+            page >= data.totalPages
+        ) {
+            break;
+        }
+
+        if (
+            !data.totalPages &&
+            records.length < limit
+        ) {
+            break;
+        }
+
+        page++;
+    }
+
+    return allRecords;
+}
+
+async function fetchAllScreens(
+    activityId,
+    taskId,
+    userId
+) {
+
+    const allScreens = [];
+
+    let page = 1;
+    const limit = 1000;
+
+    while (true) {
+
+        const url =
+            `${API}/eye-tracking/screen/` +
+            `${activityId}/${taskId}` +
+            `?userId=${encodeURIComponent(userId)}` +
+            `&limit=${limit}` +
+            `&page=${page}` +
+            `&sort=-timestamp`;
+
+        updateProgress(
+            10,
+            `Fetching screens page ${page}...`
+        );
+
+        const response = await fetch(
+            url,
+            {
+                headers: {
+                    "accept": "application/json",
+                    "Authorization": `Bearer ${token}`,
+                    "x-system-authorization": `Bearer ${token}`
+                }
+            }
+        );
+
+        if (!response.ok) {
+
+            const text =
+                await response.text();
+
+            throw new Error(
+                `Screen API ${response.status}: ${text}`
+            );
+        }
+
+        const data =
+            await response.json();
+
+        const records =
+            data.data || [];
+
+        allScreens.push(...records);
+
+        const totalPages =
+            data.totalPages;
+
+        if (totalPages) {
+
+            updateProgress(
+                Math.min(
+                    95,
+                    (page / totalPages) * 95
+                ),
+                `Fetching screens page ${page} of ${totalPages}...`
+            );
+
+            if (page >= totalPages) {
+                break;
+            }
+
+        } else if (records.length < limit) {
+
+            break;
+        }
+
+        page++;
+    }
+
+    return allScreens;
+}
+
+
+function buildEyeTrackingDataset(
+    gazeRecords,
+    screens,
+    activityId,
+    taskId,
+    userId
+) {
+
+    const screenMap = new Map();
+
+    screens.forEach(screen => {
+
+        screenMap.set(
+            screen.screenId,
+            {
+                screenId:
+                    screen.screenId || "",
+
+                timestamp:
+                    screen.timestamp || "",
+
+                imageUrl:
+                    screen.imageUrl || "",
+
+                scrollPosition:
+                    screen.scrollPosition || {},
+
+                screenResolution:
+                    screen.screenResolution || {},
+
+                imageFile: null,
+
+                gazeData: []
+            }
+        );
+
+    });
+
+    gazeRecords.forEach(record => {
+
+        const screenId =
+            record.screenId || "";
+
+        if (!screenMap.has(screenId)) {
+
+            screenMap.set(
+                screenId,
+                {
+                    screenId,
+                    timestamp: "",
+                    scrollPosition: {},
+                    screenResolution: {},
+                    imageFile: null,
+                    gazeData: []
+                }
+            );
+        }
+
+        const target =
+            screenMap.get(screenId);
+
+        const gazeData =
+            record.gazeData || [];
+
+        gazeData.forEach(gaze => {
+
+            const coordinate =
+                gaze.gazeCoordinate || {};
+
+            target.gazeData.push({
+
+                timestamp:
+                    gaze.timestamp || "",
+
+                x:
+                    coordinate.x ?? null,
+
+                y:
+                    coordinate.y ?? null,
+
+                panelTitle:
+                    gaze.panelTitle || null,
+
+                elementId:
+                    gaze.elementId || null
+
+            });
+
+        });
+    });
+
+    const screenData =
+        Array.from(screenMap.values());
+
+    screenData.forEach(
+        (screen, index) => {
+
+            screen.imageFile =
+                `screenshots/screen_${
+                    String(index + 1)
+                        .padStart(6, "0")
+                }.png`;
+        }
+    );
+
+    return {
+
+        userId,
+
+        activityId,
+
+        taskId,
+
+        exportedAt:
+            new Date().toISOString(),
+
+        screens:
+            screenData
+
+    };
+}
+
+async function downloadEyeTrackingZip(dataset) {
+
+    const zip = new JSZip();
+
+    const imageFolder =
+        zip.folder("screenshots");
+
+    const screens =
+        dataset.screens || [];
+
+    /*
+     * JSON without the original image URLs.
+     */
+    const datasetForJson =
+        structuredClone(dataset);
+
+    datasetForJson.screens.forEach(screen => {
+        delete screen.imageUrl;
+    });
+
+    /*
+     * Add JSON
+     */
+    zip.file(
+        "dataset.json",
+        JSON.stringify(
+            datasetForJson,
+            null,
+            2
+        )
+    );
+
+    /*
+     * Create CSV
+     */
+    const csv =
+        buildEyeTrackingCSV(dataset);
+
+    zip.file(
+        "dataset.csv",
+        csv
+    );
+
+    /*
+     * Download and crop screenshots
+     */
+    for (
+        let i = 0;
+        i < screens.length;
+        i++
+    ) {
+
+        const screen =
+            screens[i];
+
+        const screenNumber =
+            String(i + 1).padStart(6, "0");
+
+        updateProgress(
+            30 + (
+                ((i + 1) / screens.length) * 65
+            ),
+            `Processing screenshot ${i + 1} of ${screens.length}...`
+        );
+
+        const imageUrl =
+            screen.imageUrl;
+
+        if (!imageUrl) {
+
+            console.warn(
+                "No image URL for",
+                screen.screenId
+            );
+
+            continue;
+        }
+
+        try {
+
+            const response =
+                await fetch(
+                    imageUrl.replace(
+                        "http://",
+                        "https://"
+                    )
+                );
+
+            if (!response.ok) {
+
+                console.warn(
+                    "Could not download image:",
+                    imageUrl,
+                    response.status
+                );
+
+                continue;
+            }
+
+            const blob =
+                await response.blob();
+
+            // const cropped =
+            //     await cropImage(
+            //         blob,
+            //         200
+            //     );
+
+            // imageFolder.file(
+            //     `screen_${screenNumber}.png`,
+            //     cropped
+            // );
+
+            const anonymized =
+                await anonymizeImage(blob);
+
+            imageFolder.file(
+                `screen_${screenNumber}.png`,
+                anonymized
+            );
+
+        } catch (error) {
+
+            console.warn(
+                "Failed to process screenshot:",
+                screen.screenId,
+                error
+            );
+        }
+    }
+
+    updateProgress(
+        98,
+        "Creating ZIP..."
+    );
+
+    const zipBlob =
+        await zip.generateAsync({
+            type: "blob"
+        });
+
+    downloadBlob(
+        zipBlob,
+        "la-reflect-eye-tracking.zip",
+        "application/zip"
+    );
+
+    updateProgress(
+        100,
+        "Download ready"
+    );
+}
+
+function buildEyeTrackingCSV(dataset) {
+
+    const rows = [];
+
+    rows.push([
+        "user_id",
+        "activity_id",
+        "task_id",
+        "screen_id",
+        "screen_timestamp",
+        "gaze_timestamp",
+        "gaze_x",
+        "gaze_y",
+        "scroll_x",
+        "scroll_y",
+        "screen_width",
+        "screen_height",
+        "image_file"
+    ]);
+
+    dataset.screens.forEach(screen => {
+
+        const gazeData =
+            screen.gazeData || [];
+
+        if (gazeData.length === 0) {
+
+            rows.push([
+                dataset.userId,
+                dataset.activityId,
+                dataset.taskId,
+                screen.screenId,
+                screen.timestamp,
+                "",
+                "",
+                "",
+                screen.scrollPosition?.x ?? "",
+                screen.scrollPosition?.y ?? "",
+                screen.screenResolution?.width ?? "",
+                screen.screenResolution?.height ?? "",
+                screen.imageFile || ""
+            ]);
+
+            return;
+        }
+
+        gazeData.forEach(gaze => {
+
+            rows.push([
+                dataset.userId,
+                dataset.activityId,
+                dataset.taskId,
+                screen.screenId,
+                screen.timestamp,
+                gaze.timestamp || "",
+                gaze.x ?? "",
+                gaze.y ?? "",
+                screen.scrollPosition?.x ?? "",
+                screen.scrollPosition?.y ?? "",
+                screen.screenResolution?.width ?? "",
+                screen.screenResolution?.height ?? "",
+                screen.imageFile || ""
+            ]);
+
+        });
+    });
+
+    return rows
+        .map(row =>
+            row.map(csvEscape).join(",")
+        )
+        .join("\n");
+}
+
+
+function downloadEyeTrackingCSV(dataset) {
+
+    const csv =
+        buildEyeTrackingCSV(dataset);
+
+    downloadBlob(
+        new Blob(
+            [csv],
+            {
+                type: "text/csv;charset=utf-8"
+            }
+        ),
+        "la-reflect-eye-tracking.csv",
+        "text/csv"
+    );
+}
+
+
+async function anonymizeImage(blob) {
+
+    const bitmap =
+        await createImageBitmap(blob);
+
+    const canvas =
+        document.createElement("canvas");
+
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+
+    const context =
+        canvas.getContext("2d");
+
+    // Draw original image unchanged
+    context.drawImage(
+        bitmap,
+        0,
+        0
+    );
+
+    /*
+     * Black out webcam/video area.
+     * IMPORTANT: canvas dimensions remain unchanged,
+     * so gaze x/y coordinates remain valid.
+     */
+    context.fillStyle = "#000000";
+
+    context.fillRect(
+        0,      // x
+        230,    // y
+        205,    // width
+        150     // height
+    );
+
+    bitmap.close();
+
+    return new Promise(resolve => {
+
+        canvas.toBlob(
+            resolve,
+            "image/png"
+        );
+
+    });
+}
+
+
+
+// /*--Crop Image -- */
+
+// async function cropImage(
+//     blob,
+//     cropLeft
+// ) {
+
+//     const bitmap =
+//         await createImageBitmap(blob);
+
+//     const width =
+//         bitmap.width - cropLeft;
+
+//     const height =
+//         bitmap.height;
+
+//     if (width <= 0) {
+//         bitmap.close();
+
+//         throw new Error(
+//             "Crop width is larger than image width."
+//         );
+//     }
+
+//     const canvas =
+//         document.createElement("canvas");
+
+//     canvas.width = width;
+//     canvas.height = height;
+
+//     const context =
+//         canvas.getContext("2d");
+
+//     context.drawImage(
+//         bitmap,
+
+//         cropLeft,
+//         0,
+//         width,
+//         height,
+
+//         0,
+//         0,
+//         width,
+//         height
+//     );
+
+//     bitmap.close();
+
+//     return new Promise(
+//         resolve => {
+
+//             canvas.toBlob(
+//                 resolve,
+//                 "image/png"
+//             );
+
+//         }
+//     );
+// }
+
+
+
+/* =========================================================
+   FLATTEN GAZE DATA
+   ========================================================= */
+
+function flattenGaze(records) {
+
+    const rows = [];
+
+    records.forEach(record => {
+
+        const gazeData =
+            record.gazeData || [];
+
+        gazeData.forEach(gaze => {
+
+            const coordinate =
+                gaze.gazeCoordinate || {};
+
+            rows.push({
+
+                user_id:
+                    record.userId || "",
+
+                activity_id:
+                    record.activityId || "",
+
+                task_id:
+                    record.taskId || "",
+
+                screen_id:
+                    record.screenId || "",
+
+                timestamp:
+                    gaze.timestamp || "",
+
+                x:
+                    coordinate.x ?? "",
+
+                y:
+                    coordinate.y ?? "",
+
+                panel_title:
+                    gaze.panelTitle || "",
+
+                element_id:
+                    gaze.elementId || ""
+
+            });
+        });
+    });
+
+    return rows;
+}
+
+
+/* =========================================================
+   CSV
+   ========================================================= */
+
+function downloadCSV(rows, filename) {
+
+    if (!rows.length) {
+        throw new Error("No gaze observations found.");
+    }
+
+    const columns =
+        Object.keys(rows[0]);
+
+    const csv = [
+
+        columns.join(","),
+
+        ...rows.map(row =>
+            columns
+                .map(column =>
+                    csvEscape(row[column])
+                )
+                .join(",")
+        )
+
+    ].join("\n");
+
+    downloadBlob(
+        csv,
+        filename,
+        "text/csv;charset=utf-8"
+    );
+}
+
+
+function csvEscape(value) {
+
+    if (value === null || value === undefined) {
+        return "";
+    }
+
+    const string =
+        String(value);
+
+    if (
+        string.includes(",") ||
+        string.includes('"') ||
+        string.includes("\n")
+    ) {
+        return `"${string.replaceAll('"', '""')}"`;
+    }
+
+    return string;
+}
+
+
+/* =========================================================
+   JSON
+   ========================================================= */
+
+function downloadJSON(data, filename) {
+
+    const json =
+        JSON.stringify(data, null, 2);
+
+    downloadBlob(
+        json,
+        filename,
+        "application/json"
+    );
+}
+
+
+/* =========================================================
+   FILE DOWNLOAD
+   ========================================================= */
+
+function downloadBlob(
+    content,
+    filename,
+    type
+) {
+
+    const blob =
+        new Blob(
+            [content],
+            { type }
+        );
+
+    const url =
+        URL.createObjectURL(blob);
+
+    const link =
+        document.createElement("a");
+
+    link.href = url;
+    link.download = filename;
+
+    document.body.appendChild(link);
+
+    link.click();
+
+    link.remove();
+
+    URL.revokeObjectURL(url);
+}
+
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
+
+function extractArray(response) {
+
+    if (Array.isArray(response)) {
+        return response;
+    }
+
+    if (Array.isArray(response.data)) {
+        return response.data;
+    }
+
+    if (Array.isArray(response.results)) {
+        return response.results;
+    }
+
+    return [];
+}
+
+
+function selectFormat(format) {
+
+    selectedFormat = format;
+
+    document
+        .getElementById("csvOption")
+        .classList.toggle(
+            "selected",
+            format === "csv"
+        );
+
+    document
+        .getElementById("jsonOption")
+        .classList.toggle(
+            "selected",
+            format === "json"
+        );
+
+    document
+        .getElementById("zipOption")
+        .classList.toggle(
+            "selected",
+            format === "zip"
+        );
+}
+
+
+function selectDataType(type) {
+
+    selectedDataType = type;
+
+    document
+        .getElementById("analysisOption")
+        .classList.toggle(
+            "selected",
+            type === "analysis"
+        );
+
+    document
+        .getElementById("rawOption")
+        .classList.toggle(
+            "selected",
+            type === "raw"
+        );
+}
+
+
+function updateProgress(percent, text) {
+
+    document
+        .getElementById("progressFill")
+        .style.width = `${percent}%`;
+
+    document
+        .getElementById("progressText")
+        .textContent = text;
+}
+
+
+function showAuthStatus(message, error) {
+
+    const element =
+        document.getElementById("authStatus");
+
+    element.textContent = message;
+
+    element.classList.remove(
+        "hidden",
+        "success",
+        "error"
+    );
+
+    element.classList.add(
+        error ? "error" : "success"
+    );
+}
+
+
+function showDownloadResult(message) {
+
+    const element =
+        document.getElementById("downloadResult");
+
+    element.textContent =
+        `✓ ${message}`;
+
+    element.style.display = "block";
+}
+
+</script>
+
+</body>
+</html>

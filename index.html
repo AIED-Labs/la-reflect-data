@@ -177,6 +177,59 @@
         color: #027a48;
         display: none;
     }
+
+    .batch-controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-top: 16px;
+    }
+
+    .batch-list {
+        margin: 16px 0 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .batch-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        padding: 10px 12px;
+        border: 1px solid #e4e7ec;
+        border-radius: 8px;
+        margin-top: 8px;
+        font-size: 13px;
+    }
+
+    .remove-batch-item {
+        padding: 6px 10px;
+        color: #b42318;
+        background: #fef3f2;
+    }
+
+    .site-footer {
+    text-align: center;
+    padding: 24px 20px;
+    margin-top: 40px;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.site-footer a {
+    color: inherit;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.site-footer a:hover {
+    text-decoration: underline;
+}
+
+
+
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
@@ -262,6 +315,24 @@
         </div>
 
         <div class="note">
+            For a batch download, enter multiple user IDs separated by commas or spaces.
+        </div>
+
+        <div class="batch-controls">
+            <button
+                id="addSelectionBtn"
+                class="secondary"
+                onclick="addSelection()"
+                type="button"
+            >
+                Add to batch
+            </button>
+            <span id="batchCount" class="note">0 selections queued</span>
+        </div>
+
+        <ul id="batchList" class="batch-list"></ul>
+
+        <div class="note">
             Enter UserID given by instructor team. If you don't have it, please contact your instructor.
         </div>
 
@@ -329,12 +400,33 @@
 
         <br>
 
+        <div class="batch-controls" style="margin-top: 12px; margin-bottom: 12px;">
+            <button
+                id="chooseFolderBtn"
+                class="secondary"
+                type="button"
+                onclick="chooseSaveDirectory()"
+            >
+                Choose save folder
+            </button>
+            <span id="saveFolderLabel" class="note">No folder selected</span>
+        </div>
+
         <button
             id="downloadBtn"
             class="primary"
             onclick="downloadData()"
         >
             Download Eye-tracking Dataset
+        </button>
+
+        <button
+            id="batchDownloadBtn"
+            class="secondary"
+            onclick="downloadBatchData()"
+            type="button"
+        >
+            Download queued batch (ZIP)
         </button>
 
         <div id="progress" class="progress hidden">
@@ -369,12 +461,16 @@
 const API = "https://lareflectapi.edublab.net";
 
 let token = null;
+let savedClientId = "";
+let savedClientSecret = "";
+let selectedSaveDirectory = null;
 
 let selectedFormat = "csv";
 
 let activities = [];
 let tasks = [];
 let users = [];
+let batchSelections = [];
 
 
 /* =========================================================
@@ -422,6 +518,56 @@ async function apiRequest(endpoint, options = {}) {
    AUTHENTICATION
    ========================================================= */
 
+async function connectWithCredentials(clientId, clientSecret) {
+
+    if (!clientId || !clientSecret) {
+        throw new Error("Client ID and Client Secret are required.");
+    }
+
+    const response = await fetch(
+        `${API}/auth/system-token`,
+        {
+            method: "POST",
+            headers: {
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                clientId,
+                clientSecret
+            })
+        }
+    );
+
+    if (!response.ok) {
+        let message = `HTTP ${response.status}`;
+        try {
+            const error = await response.json();
+            message = error.error || message;
+        } catch {}
+        throw new Error(message);
+    }
+
+    const data = await response.json();
+
+    token =
+        data.token ||
+        data.accessToken ||
+        data.access_token ||
+        data.data?.token ||
+        data.data?.accessToken ||
+        data.data?.access_token;
+
+    if (!token) {
+        throw new Error("Authentication succeeded but no token was returned.");
+    }
+
+    savedClientId = clientId;
+    savedClientSecret = clientSecret;
+
+    return token;
+}
+
 async function connect() {
 
     const clientId =
@@ -445,61 +591,7 @@ async function connect() {
     button.textContent = "Connecting...";
 
     try {
-
-        const response = await fetch(
-            `${API}/auth/system-token`,
-            {
-                method: "POST",
-
-                headers: {
-                    "Accept": "application/json",
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify({
-                    clientId,
-                    clientSecret
-                })
-            }
-        );
-
-        if (!response.ok) {
-
-            let message = `HTTP ${response.status}`;
-
-            try {
-                const error = await response.json();
-                message = error.error || message;
-            } catch {}
-
-            throw new Error(message);
-        }
-
-        const data = await response.json();
-
-        /*
-         * Supports common token response names.
-         */
-
-        token =
-            data.token ||
-            data.accessToken ||
-            data.access_token ||
-            data.data?.token ||
-            data.data?.accessToken ||
-            data.data?.access_token;
-
-        console.log("Token received:", !!token);
-
-        if (!token) {
-            throw new Error(
-                "Authentication succeeded but no token was returned."
-            );
-        }
-
-        /*
-         * Remove credentials from the DOM after authentication.
-         */
+        await connectWithCredentials(clientId, clientSecret);
 
         document.getElementById("clientId").value = "";
         document.getElementById("clientSecret").value = "";
@@ -518,6 +610,8 @@ async function connect() {
     } catch (error) {
 
         token = null;
+        savedClientId = "";
+        savedClientSecret = "";
 
         showAuthStatus(
             error.message,
@@ -714,6 +808,257 @@ function showExport() {
     }
 }
 
+function addSelection() {
+
+    const activitySelect =
+        document.getElementById("activitySelect");
+
+    const taskSelect =
+        document.getElementById("taskSelect");
+
+    const userInput =
+        document.getElementById("userId");
+
+    const activityId = activitySelect.value;
+    const taskId = taskSelect.value;
+    const userIds = userInput.value
+        .split(/[\s,]+/)
+        .map(value => value.trim())
+        .filter(Boolean);
+
+    if (!activityId || !taskId || !userIds.length) {
+        alert("Select an activity and task, then enter at least one User ID.");
+        return;
+    }
+
+    userIds.forEach(userId => {
+        const alreadyQueued = batchSelections.some(selection =>
+            selection.activityId === activityId &&
+            selection.taskId === taskId &&
+            selection.userId === userId
+        );
+
+        if (!alreadyQueued) {
+            batchSelections.push({
+                activityId,
+                taskId,
+                userId,
+                activityName: activitySelect.selectedOptions[0].textContent,
+                taskName: taskSelect.selectedOptions[0].textContent
+            });
+        }
+    });
+
+    renderBatchSelections();
+    document.getElementById("exportCard").classList.remove("hidden");
+}
+
+function removeSelection(index) {
+    batchSelections.splice(index, 1);
+    renderBatchSelections();
+}
+
+function renderBatchSelections() {
+
+    const list = document.getElementById("batchList");
+    const count = document.getElementById("batchCount");
+
+    list.innerHTML = "";
+    count.textContent =
+        `${batchSelections.length} selection${batchSelections.length === 1 ? "" : "s"} queued`;
+
+    batchSelections.forEach((selection, index) => {
+        const item = document.createElement("li");
+        item.className = "batch-item";
+        item.innerHTML = `
+            <span>${escapeHTML(selection.activityName)} / ${escapeHTML(selection.taskName)} / ${escapeHTML(selection.userId)}</span>
+            <button class="remove-batch-item" type="button" onclick="removeSelection(${index})">Remove</button>
+        `;
+        list.appendChild(item);
+    });
+}
+
+function escapeHTML(value) {
+    return String(value).replace(/[&<>'"]/g, character => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "'": "&#39;",
+        '"': "&quot;"
+    }[character]));
+}
+
+async function addScreenshotsToFolder(folder, dataset) {
+    const screens = dataset.screens || [];
+    const imageFolder = folder.folder("screenshots");
+
+    for (let i = 0; i < screens.length; i++) {
+        const screen = screens[i];
+        const screenNumber = String(i + 1).padStart(6, "0");
+
+        const imageUrl = screen.imageUrl;
+        let imageBlob = null;
+
+        if (!imageUrl) {
+            console.warn("No image URL for", screen.screenId);
+            imageBlob = await createPlaceholderImageBlob();
+        } else {
+            try {
+                const response = await fetch(imageUrl.replace("http://", "https://"));
+                if (!response.ok) {
+                    console.warn("Could not download image:", imageUrl, response.status);
+                    imageBlob = await createPlaceholderImageBlob();
+                } else {
+                    imageBlob = await response.blob();
+                }
+            } catch (error) {
+                console.warn("Failed to process screenshot:", screen.screenId, error);
+                imageBlob = await createPlaceholderImageBlob();
+            }
+        }
+
+        try {
+            const anonymized = await anonymizeImage(imageBlob);
+            imageFolder.file(`screen_${screenNumber}.png`, anonymized);
+        } catch (error) {
+            console.warn("Could not anonymize screenshot:", screen.screenId, error);
+            imageFolder.file(`screen_${screenNumber}.png`, imageBlob || await createPlaceholderImageBlob());
+        }
+    }
+}
+
+async function reconnectForBatch(batchIndex, totalBatches) {
+
+    if (!savedClientId || !savedClientSecret) {
+        throw new Error("No saved credentials available for reconnect.");
+    }
+
+    updateProgress(
+        5,
+        `Reconnecting for batch ${batchIndex + 1} of ${totalBatches}...`
+    );
+
+    token = null;
+    await connectWithCredentials(savedClientId, savedClientSecret);
+}
+
+async function downloadBatchData() {
+
+    if (!batchSelections.length) {
+        alert("Add at least one selection to the batch first.");
+        return;
+    }
+
+    if (!savedClientId || !savedClientSecret) {
+        const clientId = document.getElementById("clientId").value.trim();
+        const clientSecret = document.getElementById("clientSecret").value.trim();
+
+        if (!clientId || !clientSecret) {
+            alert("Reconnect first so the app has valid credentials for the next batch.");
+            return;
+        }
+
+        savedClientId = clientId;
+        savedClientSecret = clientSecret;
+    }
+
+    const button = document.getElementById("batchDownloadBtn");
+    const singleButton = document.getElementById("downloadBtn");
+
+    button.disabled = true;
+    singleButton.disabled = true;
+    document.getElementById("progress").classList.remove("hidden");
+    document.getElementById("downloadResult").style.display = "none";
+
+    try {
+        const batchSize = 10;
+        const batches = [];
+
+        for (let i = 0; i < batchSelections.length; i += batchSize) {
+            batches.push(batchSelections.slice(i, i + batchSize));
+        }
+
+        for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+            const batch = batches[batchIndex];
+            const currentBatchLabel = `${batchIndex + 1} of ${batches.length}`;
+
+            if (batchIndex > 0) {
+                await reconnectForBatch(batchIndex, batches.length);
+            }
+
+            const zip = new JSZip();
+
+            for (let index = 0; index < batch.length; index++) {
+                const selection = batch[index];
+                const label = `${index + 1} of ${batch.length}`;
+
+                updateProgress(
+                    10 + ((batchIndex / Math.max(batches.length, 1)) * 80) + ((index / Math.max(batch.length, 1)) * 75),
+                    `Batch ${currentBatchLabel} - fetching user ${label}: ${selection.userId}...`
+                );
+
+                const gazeRecords = await fetchAllGaze(
+                    selection.activityId,
+                    selection.taskId,
+                    selection.userId
+                );
+
+                const screens = await fetchAllScreens(
+                    selection.activityId,
+                    selection.taskId,
+                    selection.userId
+                );
+
+                const dataset = buildEyeTrackingDataset(
+                    gazeRecords,
+                    screens,
+                    selection.activityId,
+                    selection.taskId,
+                    selection.userId
+                );
+
+                const safeDataset = structuredClone(dataset);
+                safeDataset.screens.forEach(screen => delete screen.imageUrl);
+
+                const folder = zip.folder(
+                    `${safeFileName(selection.activityId)}_${safeFileName(selection.taskId)}_${safeFileName(selection.userId)}`
+                );
+
+                folder.file("dataset.json", JSON.stringify(safeDataset, null, 2));
+                folder.file("dataset.csv", buildEyeTrackingCSV(dataset));
+                await addScreenshotsToFolder(folder, dataset);
+            }
+
+            updateProgress(
+                95,
+                `Creating batch ${currentBatchLabel} ZIP...`
+            );
+
+            const blob = await zip.generateAsync({ type: "blob" });
+            const filename = `la-reflect-eye-tracking-batch-${String(batchIndex + 1).padStart(2, "0")}.zip`;
+            await saveBlobToFolder(blob, filename);
+            updateProgress(100, `Batch ${currentBatchLabel} download ready`);
+            showDownloadResult(
+                `Batch ${currentBatchLabel}: ${batch.length} user${batch.length === 1 ? "" : "s"} exported to the selected folder.`
+            );
+        }
+
+        showDownloadResult(
+            `${batchSelections.length} queued user${batchSelections.length === 1 ? "" : "s"} exported in ${batches.length} batch${batches.length === 1 ? "" : "es"}.`
+        );
+    } catch (error) {
+        console.error(error);
+        alert(`Batch download failed: ${error.message}`);
+    } finally {
+        button.disabled = false;
+        singleButton.disabled = false;
+    }
+}
+
+function safeFileName(value) {
+    return String(value).replace(/[^A-Za-z0-9_.-]+/g, "_");
+}
+
 /* =========================================================
    DOWNLOAD
    ========================================================= */
@@ -786,6 +1131,16 @@ async function downloadData() {
                 userId
             );
 
+        const hasAnyData =
+            (gazeRecords?.length || 0) > 0 ||
+            (screens?.length || 0) > 0;
+
+        if (!hasAnyData) {
+            console.warn(
+                `No gaze or screen data found for activity ${activityId}, task ${taskId}, user ${userId}. Exporting empty dataset.`
+            );
+        }
+
         if (selectedFormat === "json") {
 
             const safeDataset =
@@ -801,7 +1156,9 @@ async function downloadData() {
             );
 
             showDownloadResult(
-                "Eye-tracking dataset exported as JSON."
+                hasAnyData
+                    ? "Eye-tracking dataset exported as JSON."
+                    : "No data found for the selected user; empty JSON dataset exported."
             );
 
             return;
@@ -814,7 +1171,9 @@ async function downloadData() {
             );
 
             showDownloadResult(
-                "Eye-tracking dataset exported as CSV."
+                hasAnyData
+                    ? "Eye-tracking dataset exported as CSV."
+                    : "No data found for the selected user; empty CSV dataset exported."
             );
 
             return;
@@ -827,7 +1186,9 @@ async function downloadData() {
             );
 
             showDownloadResult(
-                "Eye-tracking dataset exported as ZIP."
+                hasAnyData
+                    ? "Eye-tracking dataset exported as ZIP."
+                    : "No data found for the selected user; empty ZIP dataset exported."
             );
 
             return;
@@ -838,7 +1199,9 @@ async function downloadData() {
         );
 
         showDownloadResult(
-            "Eye-tracking dataset exported as ZIP."
+            hasAnyData
+                ? "Eye-tracking dataset exported as ZIP."
+                : "No data found for the selected user; empty ZIP dataset exported."
         );
 
     } catch (error) {
@@ -895,6 +1258,13 @@ async function fetchAllGaze(
         );
 
         if (!response.ok) {
+
+            if (response.status === 404 || response.status === 400) {
+                console.warn(
+                    `No gaze data found for user ${userId} in activity ${activityId}, task ${taskId}.`
+                );
+                return allRecords;
+            }
 
             const text =
                 await response.text();
@@ -974,6 +1344,13 @@ async function fetchAllScreens(
         );
 
         if (!response.ok) {
+
+            if (response.status === 404 || response.status === 400) {
+                console.warn(
+                    `No screen data found for user ${userId} in activity ${activityId}, task ${taskId}.`
+                );
+                return allScreens;
+            }
 
             const text =
                 await response.text();
@@ -1185,6 +1562,13 @@ async function downloadEyeTrackingZip(dataset) {
         csv
     );
 
+    if (!screens.length) {
+        imageFolder.file(
+            "README.txt",
+            "No screen data available for this user selection."
+        );
+    }
+
     /*
      * Download and crop screenshots
      */
@@ -1202,7 +1586,7 @@ async function downloadEyeTrackingZip(dataset) {
 
         updateProgress(
             30 + (
-                ((i + 1) / screens.length) * 65
+                ((i + 1) / Math.max(screens.length, 1)) * 65
             ),
             `Processing screenshot ${i + 1} of ${screens.length}...`
         );
@@ -1210,53 +1594,56 @@ async function downloadEyeTrackingZip(dataset) {
         const imageUrl =
             screen.imageUrl;
 
+        let imageBlob = null;
+
         if (!imageUrl) {
 
             console.warn(
                 "No image URL for",
                 screen.screenId
             );
+            imageBlob = createPlaceholderImageBlob();
 
-            continue;
+        } else {
+
+            try {
+
+                const response =
+                    await fetch(
+                        imageUrl.replace(
+                            "http://",
+                            "https://"
+                        )
+                    );
+
+                if (!response.ok) {
+
+                    console.warn(
+                        "Could not download image:",
+                        imageUrl,
+                        response.status
+                    );
+                    imageBlob = createPlaceholderImageBlob();
+
+                } else {
+                    imageBlob = await response.blob();
+                }
+
+            } catch (error) {
+
+                console.warn(
+                    "Failed to process screenshot:",
+                    screen.screenId,
+                    error
+                );
+                imageBlob = createPlaceholderImageBlob();
+            }
         }
 
         try {
 
-            const response =
-                await fetch(
-                    imageUrl.replace(
-                        "http://",
-                        "https://"
-                    )
-                );
-
-            if (!response.ok) {
-
-                console.warn(
-                    "Could not download image:",
-                    imageUrl,
-                    response.status
-                );
-
-                continue;
-            }
-
-            const blob =
-                await response.blob();
-
-            // const cropped =
-            //     await cropImage(
-            //         blob,
-            //         200
-            //     );
-
-            // imageFolder.file(
-            //     `screen_${screenNumber}.png`,
-            //     cropped
-            // );
-
             const anonymized =
-                await anonymizeImage(blob);
+                await anonymizeImage(imageBlob);
 
             imageFolder.file(
                 `screen_${screenNumber}.png`,
@@ -1266,9 +1653,14 @@ async function downloadEyeTrackingZip(dataset) {
         } catch (error) {
 
             console.warn(
-                "Failed to process screenshot:",
+                "Could not anonymize screenshot:",
                 screen.screenId,
                 error
+            );
+
+            imageFolder.file(
+                `screen_${screenNumber}.png`,
+                imageBlob || createPlaceholderImageBlob()
             );
         }
     }
@@ -1293,6 +1685,19 @@ async function downloadEyeTrackingZip(dataset) {
         100,
         "Download ready"
     );
+}
+
+function createPlaceholderImageBlob() {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, 1, 1);
+
+    return new Promise(resolve => {
+        canvas.toBlob(resolve, "image/png");
+    });
 }
 
 function buildEyeTrackingCSV(dataset) {
@@ -1632,6 +2037,54 @@ function downloadJSON(data, filename) {
    FILE DOWNLOAD
    ========================================================= */
 
+async function chooseSaveDirectory() {
+    if (!("showDirectoryPicker" in window)) {
+        alert("This browser does not support selecting a save folder. The app will fall back to normal downloads instead.");
+        selectedSaveDirectory = null;
+        document.getElementById("saveFolderLabel").textContent = "No folder selected";
+        return null;
+    }
+
+    try {
+        selectedSaveDirectory = await window.showDirectoryPicker();
+        document.getElementById("saveFolderLabel").textContent = `Folder: ${selectedSaveDirectory.name}`;
+        return selectedSaveDirectory;
+    } catch (error) {
+        console.warn("Directory selection cancelled or failed:", error);
+        selectedSaveDirectory = null;
+        document.getElementById("saveFolderLabel").textContent = "No folder selected";
+        return null;
+    }
+}
+
+async function saveBlobToFolder(blob, filename) {
+    if (selectedSaveDirectory && selectedSaveDirectory.requestPermission) {
+        try {
+            const permission = await selectedSaveDirectory.requestPermission({ mode: "readwrite" });
+            if (permission !== "granted") {
+                throw new Error("Folder access was not granted.");
+            }
+        } catch (error) {
+            console.warn("Folder access rejected; using browser download fallback.", error);
+        }
+    }
+
+    if (selectedSaveDirectory && typeof selectedSaveDirectory.getFileHandle === "function") {
+        try {
+            const fileHandle = await selectedSaveDirectory.getFileHandle(filename, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(await blob.arrayBuffer());
+            await writable.close();
+            return true;
+        } catch (error) {
+            console.warn("Could not save directly to folder; falling back to browser download.", error);
+        }
+    }
+
+    downloadBlob(blob, filename, blob.type || "application/octet-stream");
+    return false;
+}
+
 function downloadBlob(
     content,
     filename,
@@ -1775,6 +2228,26 @@ function showDownloadResult(message) {
 }
 
 </script>
+
+<footer class="site-footer">
+    Made with ❤️ by
+    <a href="https://sites.google.com/view/learning-analytics-iitb"
+       target="_blank"
+       rel="noopener noreferrer">
+        Learning Analytics Lab
+    </a>
+    at
+    <a href="https://www.et.iitb.ac.in/"
+       target="_blank"
+       rel="noopener noreferrer">
+        Centre for Educational Technology
+    </a>,
+    <a href="https://www.iitb.ac.in/"
+       target="_blank"
+       rel="noopener noreferrer">
+        IIT Bombay
+    </a>
+</footer>
 
 </body>
 </html>
